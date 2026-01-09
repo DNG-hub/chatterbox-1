@@ -6,6 +6,53 @@ from chatterbox.tts_turbo import ChatterboxTurboTTS
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+# === Voice Filters Integration ===
+VOICE_FILTERS_ENABLED = True
+
+# Try to import Ghost filters
+GHOST_FILTERS_AVAILABLE = False
+if VOICE_FILTERS_ENABLED:
+    try:
+        import sys
+        import os
+        # Add Voice Filters directory to path
+        voice_filters_path = os.path.join(os.path.dirname(__file__), "src", "Voice Filters")
+        if voice_filters_path not in sys.path:
+            sys.path.insert(0, voice_filters_path)
+
+        from ghost_filters import apply_ghost_filter, GHOST_MODES
+        import soundfile as sf
+        import tempfile
+
+        GHOST_FILTERS_AVAILABLE = True
+        print("SUCCESS: Ghost filters loaded")
+
+        def get_mode_names():
+            return list(GHOST_MODES.keys())
+
+        def apply_ghost_filter_to_gradio_audio(audio_tuple, mode):
+            """Convert Gradio audio format, apply filter, return Gradio format"""
+            if audio_tuple is None or mode == "None":
+                return None
+
+            sr, audio_data = audio_tuple
+
+            # Ensure float32 format
+            if audio_data.dtype != np.float32:
+                audio_data = audio_data.astype(np.float32)
+                if np.abs(audio_data).max() > 1.0:
+                    audio_data = audio_data / 32768.0
+
+            # Apply filter
+            filtered = apply_ghost_filter(audio_data, sr, mode)
+
+            return (sr, filtered)
+
+    except ImportError as e:
+        print(f"WARNING: Ghost filters not available: {e}")
+    except Exception as e:
+        print(f"WARNING: Ghost filters failed to load: {e}")
+
 EVENT_TAGS = [
     "[clear throat]", "[sigh]", "[shush]", "[cough]", "[groan]",
     "[sniff]", "[gasp]", "[chuckle]", "[laugh]"
@@ -151,6 +198,17 @@ with gr.Blocks(title="Chatterbox Turbo", css=CUSTOM_CSS) as demo:
         with gr.Column():
             audio_output = gr.Audio(label="Output Audio")
 
+            # === Ghost Voice Filter UI ===
+            if GHOST_FILTERS_AVAILABLE:
+                with gr.Accordion("Ghost Voice Filter", open=False):
+                    ghost_mode = gr.Dropdown(
+                        choices=["None"] + get_mode_names(),
+                        value="None",
+                        label="Filter Mode"
+                    )
+                    apply_ghost_filter_btn = gr.Button("Apply Ghost Filter", variant="secondary")
+                    filtered_audio_output = gr.Audio(label="Filtered Output")
+
             with gr.Accordion("Advanced Options", open=False):
                 seed_num = gr.Number(value=0, label="Random seed (0 for random)")
                 temp = gr.Slider(0.05, 2.0, step=.05, label="Temperature", value=0.8)
@@ -178,6 +236,19 @@ with gr.Blocks(title="Chatterbox Turbo", css=CUSTOM_CSS) as demo:
         ],
         outputs=audio_output,
     )
+
+    # === Ghost Filter Button Handler ===
+    if GHOST_FILTERS_AVAILABLE:
+        def simple_apply_filter(audio_tuple, mode):
+            if audio_tuple is None or mode == "None":
+                return None
+            return apply_ghost_filter_to_gradio_audio(audio_tuple, mode)
+
+        apply_ghost_filter_btn.click(
+            fn=simple_apply_filter,
+            inputs=[audio_output, ghost_mode],
+            outputs=filtered_audio_output,
+        )
 
 if __name__ == "__main__":
     demo.queue(

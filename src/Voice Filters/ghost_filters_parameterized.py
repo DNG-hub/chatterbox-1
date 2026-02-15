@@ -6,6 +6,7 @@ Extends ghost_filters.py to support real-time parameter tweaking
 import numpy as np
 import librosa
 from scipy.ndimage import uniform_filter1d
+from scipy import signal
 from pedalboard import (
     Pedalboard, Chorus, Reverb, Delay,
     HighpassFilter, LowpassFilter, Gain,
@@ -17,16 +18,20 @@ try:
     from .ghost_filters import (
         apply_ghost_filter as base_apply_ghost_filter,
         GHOST_MODES,
+        STATIC_PRESETS,
         get_mode_names,
-        _generate_static
+        _generate_static,
+        _generate_ptt_click
     )
 except ImportError:
     # Fallback for direct import
     from ghost_filters import (
         apply_ghost_filter as base_apply_ghost_filter,
         GHOST_MODES,
+        STATIC_PRESETS,
         get_mode_names,
-        _generate_static
+        _generate_static,
+        _generate_ptt_click
     )
 
 
@@ -75,6 +80,23 @@ def apply_ghost_filter_parameterized(
     static_level: float = None,
     bitcrush_depth: int = None,
     echo_mix: float = None,
+    # Cat Inner Voice specific
+    thought_pitch_shift: float = None,
+    presence_dip: float = None,
+    warmth_boost: float = None,
+    cranial_reverb_size: float = None,
+    thought_echo_mix: float = None,
+    breathiness: float = None,
+    # Cat Serious specific
+    seriousness: float = None,
+    gravitas_boost: float = None,
+    command_presence: float = None,
+    # Voice Comm specific
+    radio_bandpass_low: float = None,
+    radio_bandpass_high: float = None,
+    saturation: float = None,
+    helmet_resonance: float = None,
+    click_volume: float = None,
     # Static parameters (all modes)
     static_level_override: float = None,  # Override mode default static level
 ) -> np.ndarray:
@@ -134,6 +156,32 @@ def apply_ghost_filter_parameterized(
             reverb_room_size, reverb_damping, reverb_wet_level, reverb_dry_level,
             highpass_cutoff, lowpass_cutoff, compressor_threshold, compressor_ratio,
             gain_db, pitch_shift,
+            static_level_override
+        )
+    elif mode == "cat_inner_voice":
+        return _filter_cat_inner_voice_param(
+            audio, sr, intensity,
+            reverb_room_size, reverb_damping, reverb_wet_level, reverb_dry_level,
+            chorus_rate, chorus_depth, chorus_mix,
+            highpass_cutoff, lowpass_cutoff, compressor_threshold, compressor_ratio,
+            thought_pitch_shift, presence_dip, warmth_boost,
+            cranial_reverb_size, thought_echo_mix, breathiness,
+            static_level_override
+        )
+    elif mode == "cat_serious":
+        return _filter_cat_serious_param(
+            audio, sr, intensity,
+            reverb_room_size, reverb_damping, reverb_wet_level, reverb_dry_level,
+            highpass_cutoff, lowpass_cutoff, compressor_threshold, compressor_ratio,
+            gain_db, seriousness, gravitas_boost, command_presence,
+            static_level_override
+        )
+    elif mode == "voice_comm":
+        return _filter_voice_comm_param(
+            audio, sr, intensity,
+            compressor_threshold, compressor_ratio, gain_db,
+            radio_bandpass_low, radio_bandpass_high,
+            saturation, helmet_resonance, click_volume,
             static_level_override
         )
     else:
@@ -531,5 +579,312 @@ def _filter_transmission_param(
     static = _generate_static(len(processed), sr, "transmission", level=static_level_override)
     processed = processed + static
     processed = processed / (np.max(np.abs(processed)) + 1e-8) * 0.9
-    
+
+    return processed
+
+
+def _filter_cat_inner_voice_param(
+    y: np.ndarray, sr: int, intensity: float,
+    reverb_room_size, reverb_damping, reverb_wet_level, reverb_dry_level,
+    chorus_rate, chorus_depth, chorus_mix,
+    highpass_cutoff, lowpass_cutoff, compressor_threshold, compressor_ratio,
+    thought_pitch_shift, presence_dip, warmth_boost,
+    cranial_reverb_size, thought_echo_mix, breathiness,
+    static_level_override
+) -> np.ndarray:
+    """Parameterized Cat Inner Voice filter - female-optimized whispered inner monologue."""
+    defaults = {
+        'thought_pitch_shift': -0.3,
+        'presence_dip': 0.40,
+        'warmth_boost': 0.15,
+        'cranial_reverb_size': 0.10,
+        'thought_echo_mix': 0.0,
+        'breathiness': 0.5,
+        'reverb_room_size': 0.10,
+        'reverb_damping': 0.88,
+        'reverb_wet_level': 0.15,
+        'reverb_dry_level': 0.85,
+        'chorus_rate': 0.15,
+        'chorus_depth': 0.08,
+        'chorus_mix': 0.0,
+        'highpass_cutoff': 120,
+        'lowpass_cutoff': 7500,
+        'compressor_threshold': -24,
+        'compressor_ratio': 3.5,
+    }
+
+    # Use provided or defaults
+    pitch_val = thought_pitch_shift if thought_pitch_shift is not None else defaults['thought_pitch_shift']
+    presence_val = presence_dip if presence_dip is not None else defaults['presence_dip']
+    warmth_val = warmth_boost if warmth_boost is not None else defaults['warmth_boost']
+    cranial_size = cranial_reverb_size if cranial_reverb_size is not None else defaults['cranial_reverb_size']
+    breath_val = breathiness if breathiness is not None else defaults['breathiness']
+
+    # Use cranial_reverb_size to override reverb_room_size if reverb_room_size not explicitly set
+    effective_reverb_room = reverb_room_size if reverb_room_size is not None else cranial_size
+
+    # --- Pitch shift for thought quality ---
+    y_thought = librosa.effects.pitch_shift(y, sr=sr, n_steps=pitch_val)
+    y_whisper = (0.15 * y + 0.85 * y_thought) * intensity
+
+    # --- Very subtle saturation: closeness and density at low volume ---
+    y_whisper = np.tanh(y_whisper * 1.2) * 0.85
+
+    # --- EQ shaping: clean whisper through sculpting ---
+    nyquist = sr / 2
+
+    # Presence dip at 3.2 kHz - scaled by breathiness (more breathy = more dip)
+    effective_presence = presence_val * (0.6 + breath_val * 0.8)
+    if 3200 < nyquist and effective_presence > 0:
+        low = max(0.01, min(0.99, (3200 - 800) / nyquist))
+        high = max(low + 0.01, min(0.99, (3200 + 800) / nyquist))
+        b, a = signal.butter(2, [low, high], 'band')
+        presence_band = signal.filtfilt(b, a, y_whisper)
+        y_whisper = y_whisper - effective_presence * presence_band
+
+    # Sibilance dip (de-esser): tame harsh S sounds at 5-8 kHz
+    if 6000 < nyquist:
+        low_s = max(0.01, min(0.99, 5000 / nyquist))
+        high_s = max(low_s + 0.01, min(0.99, 8000 / nyquist))
+        b, a = signal.butter(2, [low_s, high_s], 'band')
+        sibilance_band = signal.filtfilt(b, a, y_whisper)
+        y_whisper = y_whisper - 0.30 * sibilance_band
+
+    # Warmth boost around 800-1400 Hz
+    if 1000 < nyquist and warmth_val > 0:
+        low_w = max(0.01, min(0.99, 700 / nyquist))
+        high_w = max(low_w + 0.01, min(0.99, 1400 / nyquist))
+        b, a = signal.butter(2, [low_w, high_w], 'band')
+        warmth_band = signal.filtfilt(b, a, y_whisper)
+        y_whisper = y_whisper + warmth_val * warmth_band
+
+    y_whisper = y_whisper / (np.max(np.abs(y_whisper)) + 1e-8) * 0.85
+
+    # --- Pedalboard: clean whisper chain ---
+    # Breathiness slider tightens the highpass and lowers the lowpass
+    effective_hp = (highpass_cutoff or defaults['highpass_cutoff']) + (breath_val * 80)
+    effective_lp = (lowpass_cutoff or defaults['lowpass_cutoff']) - (breath_val * 1500)
+    effective_lp = max(4000, effective_lp)
+
+    board = Pedalboard([
+        HighpassFilter(cutoff_frequency_hz=effective_hp),
+        LowpassFilter(cutoff_frequency_hz=effective_lp),
+        Compressor(
+            threshold_db=compressor_threshold or defaults['compressor_threshold'],
+            ratio=compressor_ratio or defaults['compressor_ratio']
+        ),
+        Reverb(
+            room_size=effective_reverb_room,
+            damping=reverb_damping or defaults['reverb_damping'],
+            wet_level=reverb_wet_level or defaults['reverb_wet_level'],
+            dry_level=reverb_dry_level or defaults['reverb_dry_level']
+        ),
+        Gain(gain_db=-3),
+        Limiter(threshold_db=-1),
+    ])
+
+    processed = board(y_whisper.reshape(1, -1), sr)
+    processed = processed.flatten()
+
+    # No static - clean whisper
+    processed = processed / (np.max(np.abs(processed)) + 1e-8) * 0.75
+
+    return processed
+
+
+def _filter_cat_serious_param(
+    y: np.ndarray, sr: int, intensity: float,
+    reverb_room_size, reverb_damping, reverb_wet_level, reverb_dry_level,
+    highpass_cutoff, lowpass_cutoff, compressor_threshold, compressor_ratio,
+    gain_db, seriousness, gravitas_boost, command_presence,
+    static_level_override
+) -> np.ndarray:
+    """Parameterized Cat Serious filter - grades of seriousness."""
+    defaults = {
+        'seriousness': 0.5,
+        'gravitas_boost': 0.20,
+        'command_presence': 0.12,
+        'reverb_room_size': 0.08,
+        'reverb_damping': 0.9,
+        'reverb_wet_level': 0.08,
+        'reverb_dry_level': 0.92,
+        'highpass_cutoff': 80,
+        'lowpass_cutoff': 8000,
+        'compressor_threshold': -20,
+        'compressor_ratio': 4.5,
+        'gain_db': 1.5,
+    }
+
+    serious_val = seriousness if seriousness is not None else defaults['seriousness']
+    gravitas_val = gravitas_boost if gravitas_boost is not None else defaults['gravitas_boost']
+    command_val = command_presence if command_presence is not None else defaults['command_presence']
+
+    # Seriousness maps to pitch drop: 0=no drop, 0.5=-3 semi, 1.0=-5 semi
+    pitch_drop = -1 + (serious_val * -4)  # Range: -1 to -5 semitones
+
+    # --- Pitch drop ---
+    y_serious = librosa.effects.pitch_shift(y, sr=sr, n_steps=pitch_drop)
+    y_blended = (0.10 * y + 0.90 * y_serious) * intensity
+    y_blended = y_blended / (np.max(np.abs(y_blended)) + 1e-8) * 0.9
+
+    # --- EQ shaping ---
+    nyquist = sr / 2
+
+    # Gravitas: low-mid boost (200-500 Hz), scaled by seriousness
+    if 500 < nyquist and gravitas_val > 0:
+        low = max(0.01, min(0.99, 200 / nyquist))
+        high = max(low + 0.01, min(0.99, 500 / nyquist))
+        b, a = signal.butter(2, [low, high], 'band')
+        gravitas_band = signal.filtfilt(b, a, y_blended)
+        y_blended = y_blended + gravitas_val * (0.5 + serious_val) * gravitas_band
+
+    # Command presence: 2-3 kHz boost
+    if 2500 < nyquist and command_val > 0:
+        low_p = max(0.01, min(0.99, 2000 / nyquist))
+        high_p = max(low_p + 0.01, min(0.99, 3000 / nyquist))
+        b, a = signal.butter(2, [low_p, high_p], 'band')
+        command_band = signal.filtfilt(b, a, y_blended)
+        y_blended = y_blended + command_val * command_band
+
+    y_blended = y_blended / (np.max(np.abs(y_blended)) + 1e-8) * 0.9
+
+    # Lowpass gets tighter with seriousness (less brightness)
+    effective_lowpass = lowpass_cutoff or defaults['lowpass_cutoff']
+    effective_lowpass = effective_lowpass - (serious_val * 1500)  # Up to 1.5 kHz cut
+    effective_lowpass = max(4000, effective_lowpass)
+
+    # Compression ratio increases with seriousness
+    effective_ratio = (compressor_ratio or defaults['compressor_ratio']) + (serious_val * 2)
+
+    board = Pedalboard([
+        HighpassFilter(cutoff_frequency_hz=highpass_cutoff or defaults['highpass_cutoff']),
+        LowpassFilter(cutoff_frequency_hz=effective_lowpass),
+        Compressor(
+            threshold_db=compressor_threshold or defaults['compressor_threshold'],
+            ratio=effective_ratio
+        ),
+        Reverb(
+            room_size=reverb_room_size or defaults['reverb_room_size'],
+            damping=reverb_damping or defaults['reverb_damping'],
+            wet_level=reverb_wet_level or defaults['reverb_wet_level'],
+            dry_level=reverb_dry_level or defaults['reverb_dry_level']
+        ),
+        Gain(gain_db=gain_db or defaults['gain_db']),
+        Limiter(threshold_db=-0.5),
+    ])
+
+    processed = board(y_blended.reshape(1, -1), sr)
+    processed = processed.flatten()
+
+    static = _generate_static(len(processed), sr, "cat_serious", level=static_level_override)
+    processed = processed + static
+    processed = processed / (np.max(np.abs(processed)) + 1e-8) * 0.9
+
+    return processed
+
+
+def _filter_voice_comm_param(
+    y: np.ndarray, sr: int, intensity: float,
+    compressor_threshold, compressor_ratio, gain_db,
+    radio_bandpass_low, radio_bandpass_high,
+    saturation, helmet_resonance, click_volume,
+    static_level_override
+) -> np.ndarray:
+    """Parameterized Voice Comm filter - helmet radio with PTT click."""
+    defaults = {
+        'radio_bandpass_low': 300,
+        'radio_bandpass_high': 3400,
+        'saturation': 1.8,
+        'helmet_resonance': 0.06,
+        'click_volume': 0.45,
+        'compressor_threshold': -18,
+        'compressor_ratio': 8,
+        'gain_db': 2,
+    }
+
+    sat_val = saturation if saturation is not None else defaults['saturation']
+    bp_low = radio_bandpass_low if radio_bandpass_low is not None else defaults['radio_bandpass_low']
+    bp_high = radio_bandpass_high if radio_bandpass_high is not None else defaults['radio_bandpass_high']
+    helmet_val = helmet_resonance if helmet_resonance is not None else defaults['helmet_resonance']
+    click_vol = click_volume if click_volume is not None else defaults['click_volume']
+
+    # --- Saturation: radio limiter character ---
+    y_radio = np.tanh(y * sat_val * intensity) * 0.7
+
+    # --- Mix static INTO the voice signal ---
+    static = _generate_static(len(y_radio), sr, "voice_comm", level=static_level_override)
+    voice_envelope = np.abs(y_radio)
+    voice_envelope = uniform_filter1d(voice_envelope, size=int(sr * 0.03))
+    voice_envelope = voice_envelope / (np.max(voice_envelope) + 1e-8)
+    modulated_static = static * (0.3 + 2.5 * voice_envelope)
+    y_radio = y_radio + modulated_static
+
+    # --- Nasal mid-boost at 1-2 kHz for radio bite ---
+    nyquist = sr / 2
+    if 1500 < nyquist:
+        low_n = max(0.01, min(0.99, 1000 / nyquist))
+        high_n = max(low_n + 0.01, min(0.99, 2000 / nyquist))
+        b, a = signal.butter(2, [low_n, high_n], 'band')
+        nasal_band = signal.filtfilt(b, a, y_radio)
+        y_radio = y_radio + 0.18 * nasal_band
+
+    y_radio = y_radio / (np.max(np.abs(y_radio)) + 1e-8) * 0.85
+
+    # --- Pedalboard ---
+    board = Pedalboard([
+        HighpassFilter(cutoff_frequency_hz=bp_low),
+        LowpassFilter(cutoff_frequency_hz=bp_high),
+        Compressor(
+            threshold_db=compressor_threshold or defaults['compressor_threshold'],
+            ratio=compressor_ratio or defaults['compressor_ratio']
+        ),
+        Reverb(
+            room_size=0.05,
+            damping=0.95,
+            wet_level=helmet_val,
+            dry_level=1.0 - helmet_val
+        ),
+        Gain(gain_db=gain_db or defaults['gain_db']),
+        Limiter(threshold_db=-1),
+    ])
+
+    processed = board(y_radio.reshape(1, -1), sr)
+    processed = processed.flatten()
+    processed = processed / (np.max(np.abs(processed)) + 1e-8) * 0.85
+
+    # --- Noise gate / squelch: kill silence between speech ---
+    gate_envelope = np.abs(processed)
+    gate_envelope = uniform_filter1d(gate_envelope, size=int(sr * 0.02))
+    gate_threshold = np.max(gate_envelope) * 0.04
+    gate_mask = (gate_envelope > gate_threshold).astype(np.float32)
+    gate_smooth = uniform_filter1d(gate_mask, size=int(sr * 0.03))
+    gate_smooth = np.clip(gate_smooth * 3, 0, 1)
+    processed = processed * gate_smooth
+
+    # --- Trim leading silence so press click is right before voice ---
+    abs_signal = np.abs(processed)
+    trim_threshold = np.max(abs_signal) * 0.02
+    first_voice = 0
+    while first_voice < len(processed) and abs_signal[first_voice] < trim_threshold:
+        first_voice += 1
+    lead_samples = min(int(sr * 0.005), first_voice)
+    processed = processed[max(0, first_voice - lead_samples):]
+
+    # --- Trim trailing silence so release click is right at end of voice ---
+    abs_signal = np.abs(processed)
+    trim_threshold = np.max(abs_signal) * 0.02
+    last_voice = len(processed) - 1
+    while last_voice > 0 and abs_signal[last_voice] < trim_threshold:
+        last_voice -= 1
+    tail_samples = min(int(sr * 0.005), len(processed) - last_voice - 1)
+    processed = processed[:last_voice + tail_samples + 1]
+
+    # --- PTT press click at start, release click at end ---
+    if click_vol > 0:
+        press_click = _generate_ptt_click(sr, click_type="press")
+        press_click = press_click * (click_vol / 0.85)  # Scale relative to default amp
+        release_click = _generate_ptt_click(sr, click_type="release")
+        release_click = release_click * (click_vol / 0.85)
+        processed = np.concatenate([press_click, processed, release_click])
+
     return processed

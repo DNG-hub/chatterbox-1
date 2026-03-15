@@ -5,18 +5,52 @@ Complete reference for all adjustable parameters in the Ghost Voice Filters.
 ## 🎚️ Common Effects (All Modes)
 
 ### Static/Noise Parameters
-Control the background static/noise layer that simulates unconventional media:
+Control the background static/noise layer that simulates real-world phenomena.
 
 | Parameter | Range | Default | Effect |
 |-----------|-------|---------|--------|
-| **Static Level** | 0.0 - 0.15 | Mode-specific | Volume of background static (0 = none, higher = more static) |
+| **Static Level Override** | -0.01 - 0.15 | Mode-specific | Overall static volume (-0.01 = use mode default) |
 
-**Mode-Specific Static Types:**
-- **Whisper Chorus**: High-frequency tape hiss (8-12 kHz) - Default: 0.02 (Low)
-- **Spore Cloud**: Mid-range crackle/granular (2-5 kHz) - Default: 0.025 (Low-Medium)
-- **Mycelium Pulse**: Low-frequency rumble (50-200 Hz) - Default: 0.03 (Medium)
-- **Resonance Capture**: Broad-spectrum white noise - Default: 0.03 (Medium)
-- **Transmission**: Radio static/interference (1-4 kHz) - Default: 0.02 (Low)
+**Mode-Specific Static Characteristics:**
+
+Each mode has a unique static profile based on real-world phenomena:
+
+| Mode | Base Type | Frequency | Level | Character |
+|------|-----------|-----------|-------|-----------|
+| **Whisper Chorus** | Tape hiss | 6-14 kHz | 0.02 | Intimate, aged recording |
+| **Spore Cloud** | Granular | 2-7 kHz | 0.025 | Organic, particle-like |
+| **Mycelium Pulse** | Rumble | 25-180 Hz | 0.03 | Deep, underground |
+| **Resonance Capture** | Unstable | 100-9000 Hz | 0.04 | Corrupted, glitchy |
+| **Transmission** | Radio | 800-5000 Hz | 0.02 | Broadcast interference |
+
+### Realistic Static Features (Automatic)
+
+The static now includes real-world phenomena that vary naturally:
+
+**1. Amplitude Fading** - Signal strength drifts over time (like multipath radio propagation)
+- Whisper Chorus: Subtle ±15% drift (aged equipment)
+- Spore Cloud: Breathing ±25% (organic presence)
+- Mycelium Pulse: Slow ±30% drift (geological)
+- Resonance Capture: Erratic ±40% (unstable signal)
+- Transmission: Multipath ±20% (radio fading)
+
+**2. Impulse Events** - Random pops, clicks, and thuds
+- Whisper Chorus: Rare, soft micro-pops (1-2/sec)
+- Spore Cloud: Clustered tiny particles (12/sec)
+- Mycelium Pulse: Deep thuds (0.7/sec)
+- Resonance Capture: Heavy glitches (8/sec)
+- Transmission: Interference bursts (3/sec)
+
+**3. Dropouts** - Momentary signal loss
+- Whisper Chorus: Occasional tape wear
+- Spore Cloud: None (continuous)
+- Mycelium Pulse: Slow pressure waves
+- Resonance Capture: Frequent signal breaks
+- Transmission: Atmospheric fades
+
+**4. Special Effects**
+- Resonance Capture: EVP-like frequency sweeps
+- Transmission: AM wobble modulation
 
 **Tips:**
 - **Low (0.01-0.02)**: Subtle background presence, barely noticeable
@@ -24,7 +58,7 @@ Control the background static/noise layer that simulates unconventional media:
 - **High (0.05-0.08)**: Prominent static, may obscure voice details
 - **Very High (0.1-0.15)**: Heavy static, voice may be difficult to understand
 
-**Note:** Static is always present at the set level (constant, not reactive to voice). Each mode has a characteristic static type that matches its tonal quality.
+**Note:** Static now varies naturally - each generation produces unique variations while maintaining the mode's character. See `STATIC_DESIGN.md` for detailed technical documentation.
 
 ### Reverb Parameters
 Control the spatial/echo characteristics:

@@ -781,7 +781,7 @@ def _filter_cat_inner_voice(y: np.ndarray, sr: int) -> np.ndarray:
     y_whisper = 0.15 * y + 0.85 * y_whisper
 
     # --- Very subtle saturation: adds closeness and density at low volume ---
-    y_whisper = np.tanh(y_whisper * 1.2) * 0.85
+    y_whisper = np.tanh(y_whisper * 1.2) * 0.92
 
     # --- EQ shaping to remove "voiced" quality and create whisper ---
     nyquist = sr / 2
@@ -822,16 +822,16 @@ def _filter_cat_inner_voice(y: np.ndarray, sr: int) -> np.ndarray:
         Compressor(threshold_db=-24, ratio=3.5),
         # Tiny cranial reverb: intimate, inside-the-head
         Reverb(room_size=0.10, damping=0.88, wet_level=0.15, dry_level=0.85),
-        # Reduce overall volume: whispers are quiet
-        Gain(gain_db=-3),
+        # No volume reduction -- assembler normalises all speakers to target RMS
+        Gain(gain_db=0),
         Limiter(threshold_db=-1),
     ])
 
     processed = board(y_whisper.reshape(1, -1), sr)
     processed = processed.flatten()
 
-    # No static - clean whisper
-    processed = processed / (np.max(np.abs(processed)) + 1e-8) * 0.75
+    # No static - clean whisper; normalise to 0.88 and let assembler bring to target
+    processed = processed / (np.max(np.abs(processed)) + 1e-8) * 0.88
 
     return processed
 
@@ -905,66 +905,65 @@ def _filter_cat_serious(y: np.ndarray, sr: int) -> np.ndarray:
 
 def _generate_ptt_click(sr: int, click_type: str = "release") -> np.ndarray:
     """
-    Generate a pronounced, staticy push-to-talk click sound.
+    Generate a push-to-talk click sound.
 
-    Low-pitched, crunchy relay click with heavy static texture.
-    Deep thump + mid snap + broadband static burst.
-    Think military radio or aircraft comms squelch tail.
+    Press click: sharp onset transient (relay engaging). Works because
+    it emerges from silence into voice - the ear catches the contrast.
+
+    Release click: squelch tail - a longer, noisier burst that sustains
+    long enough to be perceived when decaying into silence. Real radio
+    release clicks are noisier and more drawn-out than press clicks.
 
     Args:
         sr: Sample rate
         click_type: "press" or "release"
 
     Returns:
-        Click audio array (~70-80ms)
+        Click audio array
     """
-    if click_type == "release":
-        duration_ms = 75
-        click_amp = 0.85
+    if click_type == "press":
+        return _generate_press_click(sr)
     else:
-        duration_ms = 55
-        click_amp = 0.70
+        return _generate_release_click(sr)
 
+
+def _generate_press_click(sr: int) -> np.ndarray:
+    """Short, sharp press click - relay engaging."""
+    duration_ms = 55
     num_samples = int(sr * duration_ms / 1000)
     t = np.arange(num_samples) / sr
 
-    # Layer 1: Deep low thump (~200 Hz - chest-feel bass)
+    # Deep thump
     thump = 0.8 * np.sin(2 * np.pi * 200 * t) * np.exp(-80 * t)
-
-    # Layer 2: Mid snap (~500 Hz - relay contact)
+    # Mid snap
     snap = 0.5 * np.sin(2 * np.pi * 500 * t) * np.exp(-150 * t)
-
-    # Layer 3: Static burst - bandpassed noise throughout the click
-    # This gives the click its staticy, crunchy radio character
+    # Static burst
     static_noise = np.random.randn(num_samples)
-    # Bandpass the static to radio range (300-3000 Hz)
     nyq = sr / 2
     low_f = max(0.01, min(0.99, 300 / nyq))
     high_f = max(low_f + 0.01, min(0.99, 3000 / nyq))
     b, a = signal.butter(3, [low_f, high_f], 'band')
     static_noise = signal.filtfilt(b, a, static_noise)
-    # Shape static with a decay envelope so it fades with the click
-    static_env = np.exp(-40 * t)
-    static_layer = 0.6 * static_noise * static_env
-
-    # Layer 4: Sharp initial transient (mechanical impact)
-    transient_len = min(int(sr * 0.005), num_samples)  # 5ms
+    static_layer = 0.6 * static_noise * np.exp(-40 * t)
+    # Sharp transient
+    transient_len = min(int(sr * 0.005), num_samples)
     transient = np.zeros(num_samples)
     transient[:transient_len] = 0.7 * np.random.randn(transient_len)
     transient[:transient_len] *= np.exp(-np.arange(transient_len) / (transient_len / 2.5))
 
     click = thump + snap + static_layer + transient
-
-    # Shape with a fast attack envelope
-    attack_samples = min(int(sr * 0.001), num_samples)  # 1ms attack
+    # Fast attack envelope
+    attack_samples = min(int(sr * 0.001), num_samples)
     envelope = np.ones(num_samples)
     envelope[:attack_samples] = np.linspace(0, 1, attack_samples)
     click = click * envelope
-
-    # Normalize to target amplitude
-    click = click / (np.max(np.abs(click)) + 1e-8) * click_amp
-
+    click = click / (np.max(np.abs(click)) + 1e-8) * 0.85
     return click.astype(np.float32)
+
+
+def _generate_release_click(sr: int) -> np.ndarray:
+    """Release click - same synthesis as press click for matched sound."""
+    return _generate_press_click(sr)
 
 
 def _filter_voice_comm(y: np.ndarray, sr: int) -> np.ndarray:
@@ -983,6 +982,17 @@ def _filter_voice_comm(y: np.ndarray, sr: int) -> np.ndarray:
     - Slight boxy resonance (helmet cavity)
     - Pronounced low-pitch staticy PTT click at start and end of voice
     """
+    # --- Pre-normalize to consistent RMS level ---
+    # TTS and voice-converted audio have different dynamics. Normalize both
+    # to the same RMS before processing so the filter chain (saturation,
+    # static modulation, compression) produces a consistent sound.
+    rms = np.sqrt(np.mean(y ** 2))
+    target_rms = 0.15  # Consistent input level for the filter chain
+    if rms > 1e-6:
+        y = y * (target_rms / rms)
+    # Peak-limit to prevent extreme values from dominating saturation
+    y = np.clip(y, -0.8, 0.8)
+
     # --- Mild saturation: radio limiter character ---
     y_radio = np.tanh(y * 1.8) * 0.7
 
@@ -1053,11 +1063,16 @@ def _filter_voice_comm(y: np.ndarray, sr: int) -> np.ndarray:
     # --- PTT press click at start, release click at end ---
     press_click = _generate_ptt_click(sr, click_type="press")
     release_click = _generate_ptt_click(sr, click_type="release")
-    # 30ms silence pad after release click so the ear registers it
-    # before the file ends (without this, the decaying transient is
-    # perceived as part of the voice tail-off, not a distinct click)
-    release_pad = np.zeros(int(sr * 0.030))
-    processed = np.concatenate([press_click, processed, release_click, release_pad])
+    # Dead-air gap before release click (like real PTT radios: speaker stops,
+    # brief squelch silence, then the relay release click). Without this gap
+    # the click is masked by the voice tail and perceived as part of it.
+    pre_release_gap = np.zeros(int(sr * 0.060))   # 60ms dead air
+    post_release_pad = np.zeros(int(sr * 0.200))   # 200ms tail pad (WMP needs >100ms)
+    post_press_gap = np.zeros(int(sr * 0.060))    # 60ms dead air after press click
+    processed = np.concatenate([
+        press_click, post_press_gap, processed,
+        pre_release_gap, release_click, post_release_pad
+    ])
 
     return processed
 

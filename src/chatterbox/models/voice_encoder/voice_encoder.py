@@ -236,6 +236,8 @@ class VoiceEncoder(nn.Module):
             assert all(m.shape[1] == mels[0].shape[1] for m in mels), "Mels aren't in (B, T, M) format"
             mel_lens = [mel.shape[0] for mel in mels]
             mels = pack(mels)
+        if mels.dtype != torch.float32:
+            mels = mels.float()
 
         # Embed them
         with torch.inference_mode():

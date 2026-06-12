@@ -1,6 +1,23 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. It inherits the shared instructions in `E:/REPOS/CLAUDE.md`.
+
+## Project identity
+
+- **Canonical project slug:** `chatterbox` (declared via `.hecl-project` marker)
+- **Owning entity:** Cat and Daniel Storytelling & Media Lab | Stayton, OR
+- **Holding LLC:** `cmha-tbd`
+- **HECL classification:** CREATIVE_IP — the underlying engine is third-party Resemble AI code, but Dave's use of it (voice presets, reference voices, character-to-voice mapping, generation parameters, prompt direction, and any custom wrapper scripts at the repo root) is protectable authorship for the Cat & Daniel video production pipeline.
+- **Status:** active — voice production for the Cat & Daniel canon
+
+## Authorship boundary (important)
+
+This is the **only** scenario in our HECL coverage where the code itself is third-party but the *use* is the IP. Be careful to distinguish:
+
+- **NOT Dave's IP**: anything under `src/chatterbox/` (the upstream Resemble AI model code), the model weights, the Gradio demo apps shipped by Resemble.
+- **IS Dave's IP**: the root-level `reconstruct_*.py`, `vc_diarized_converter*.py`, `srt_to_tts_reconstruction.py`, `extract_reference_voices.py` scripts; reference voice samples in `Samples/`; any character voice presets; the choice of parameters (exaggeration, cfg_weight, temperature) for specific characters; the dialogue text fed in (which originates from the StoryTeller canon).
+
+When capturing selections, anchor them to **what Dave authored** — never claim authorship of the upstream model.
 
 ## Project Overview
 
@@ -91,3 +108,43 @@ The Turbo model supports inline event tags: `[cough]`, `[laugh]`, `[chuckle]`, `
 **Turbo model:**
 - CFG and exaggeration are disabled (ignored if passed)
 - Uses `top_k`, `top_p`, `repetition_penalty` for sampling
+
+## HECL Discipline (REQUIRED)
+
+This is active creative work — Dave is directing voice production for canon characters. Every selection of voice, parameter, or take must be memorialized to Valeska so the trail is forensically defensible.
+
+**What is captured automatically (no action needed):**
+- Every prompt Dave types in any Claude Code session in this directory → tagged `hecl:origination`, `project:chatterbox`, `holding:cmha-tbd` (via the global `UserPromptSubmit` hook).
+- Every `Write`, `Edit`, `Bash`, `TaskCreate`, `TaskUpdate` → tagged `auto-capture`, `project:chatterbox` (via the global `PostToolUse` hook).
+
+**What you (the agent) must capture explicitly:**
+Whenever Dave makes a creative SELECTION you MUST call `selection.py` BEFORE proceeding with the chosen path. Examples specific to voice work:
+
+| Moment | Subtype | Example chose / rejected |
+|---|---|---|
+| Picks one of three generated takes | `review-acceptance` | chose: take_2.wav / rejected: take_1.wav, take_3.wav |
+| Locks a character voice preset | `directive-selection` | chose: "Cat = ref_voice_03 with exaggeration=0.6" |
+| Defers voice direction to your suggestion | `deference-selection` | chose: "use Turbo for Daniel because faster pacing" |
+| Modifies your generated reference cut | `review-modification` | chose: "use take_1 but trim 200ms of silence at start" |
+| Dispatches a batch generation job | `dispatch-selection` | chose: "regenerate all of episode 12 with new Cat preset" |
+
+```bash
+python E:/REPOS/Hermes-Agent-Resurrection/scripts/selection.py \
+  --subtype <subtype> \
+  --project chatterbox \
+  --chose "<what was chosen>" \
+  --rejected "<alt 1>" "<alt 2>" \
+  --rationale "<why, in Dave's words if known>" \
+  --evidence "file://Samples/cat_ref_v3.wav" "<thought:abc12345>"
+```
+
+For canon-locking moments (e.g. "this is now the official voice for Cat"), use `founder_decl.py` instead with `--type fixation` so it's recorded as a permanent canon decision.
+
+Deference is authorial control — capturing the moment Dave defers to your recommendation is what makes the authorship timeline continuous instead of dotted with apparent gaps.
+
+## Reference docs
+
+- HECL data model: `E:/REPOS/Hermes-Agent-Resurrection/notes/hecl-data-model-draft.md`
+- Holding LLC namespace conventions: `E:/REPOS/Hermes-Agent-Resurrection/notes/holding-llc-namespace-conventions.md`
+- Selection CLI source: `E:/REPOS/Hermes-Agent-Resurrection/scripts/selection.py`
+- DavinciGuide voiceover integration: `E:/REPOS/DavinciGuide/scripts/utilities/voiceover_generator.py`

@@ -4,7 +4,7 @@ import torch
 import gradio as gr
 from chatterbox.tts_turbo import ChatterboxTurboTTS
 
-VOICES_DIR = r"E:\REPOS\StoryTeller\docs\voices"
+VOICES_DIR = r"E:\REPOS\voices\characters"
 
 
 def browse_voices_dialog():
@@ -343,6 +343,17 @@ with gr.Blocks(title="Chatterbox Turbo", css=CUSTOM_CSS) as demo:
                 label="Reference Audio File",
                 value="https://storage.googleapis.com/chatterbox-demo-samples/prompts/female_random_podcast.wav"
             )
+
+            with gr.Row():
+                browsed_audio_path = gr.Textbox(
+                    label="Browsed Voice Path (overrides above)",
+                    placeholder="Use Browse button to select from voices folder...",
+                    interactive=False,
+                    scale=4,
+                )
+                browse_btn = gr.Button("Browse Voices", variant="secondary", scale=1)
+
+            browse_btn.click(fn=browse_voices_dialog, inputs=[], outputs=browsed_audio_path)
 
             run_btn = gr.Button("Generate ⚡", variant="primary")
 
@@ -688,6 +699,7 @@ with gr.Blocks(title="Chatterbox Turbo", css=CUSTOM_CSS) as demo:
             model_state,
             text,
             ref_wav,
+            browsed_audio_path,
             temp,
             seed_num,
             min_p,

@@ -19,7 +19,7 @@ from chatterbox.vc import ChatterboxVC
 SPLITS_DIR = Path("Samples/diarized_splits")
 OUTPUT_DIR = Path("Samples/diarized_vc_output")
 CAT_REF = Path(".gradio/flagged/Target voice audio file if none, the default voice is used/5e758f958b23dda44386/Cat Mitch Eng.m4a")
-DANIEL_REF = Path("E:\\REPOS\\StoryTeller\\docs\\voices\\Dav_Daniel.wav")
+DANIEL_REF = Path("E:\\REPOS\\voices\\characters\\daniel\\reference\\Dav_Daniel.wav")
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

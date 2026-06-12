@@ -12,8 +12,8 @@ from src.chatterbox.vc import ChatterboxVC
 # Configuration - BEST REFERENCES
 SPLITS_DIR = r"Samples/diarized_splits"
 OUTPUT_DIR = r"Samples/diarized_vc_output_v2"
-CAT_REF = r"E:\REPOS\StoryTeller\docs\voices\Cat Mitch Eng.m4a"  # Female: 180.6 Hz
-DANIEL_REF = r"E:\REPOS\StoryTeller\docs\voices\daniel_obrien_reference.wav"  # Male: 100.8 Hz
+CAT_REF = r"E:\REPOS\voices\characters\cat\reference\Cat Mitch Eng.m4a"  # Female: 180.6 Hz
+DANIEL_REF = r"E:\REPOS\voices\characters\daniel\voice-sources\accent-source\daniel_obrien_reference.wav"  # Male: 100.8 Hz
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 

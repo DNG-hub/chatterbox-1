@@ -1,0 +1,5 @@
+# core.autocrlf is true on stable, so a checkout would rewrite this shell script
+# with CRLF. Santos reads the same working copy over the sshfs mount, where a CRLF
+# script fails with a bad-interpreter error - silently disabling the guard on the
+# one machine Hermes runs on.
+scripts/agent-session.sh text eol=lf
